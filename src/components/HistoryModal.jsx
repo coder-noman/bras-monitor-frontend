@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { api } from "../utils/api";
 import { formatSeconds, formatSecondsShort, formatTimeOnlyBD, formatDateOnlyBD, formatDateTimeBD } from "../utils/formatters";
+import DeviceDashboardPage from "../pages/DeviceDashboardPage";
 
 // ── Analytics full-page view ─────────────────────────────────────────────────
 function AnalyticsPage({ router, onClose }) {
@@ -175,6 +176,7 @@ export default function HistoryModal({ router, onClose }) {
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState(null);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const limit = 50;
 
@@ -225,6 +227,11 @@ export default function HistoryModal({ router, onClose }) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  // Show device dashboard full page on top
+  if (showDashboard) {
+    return <DeviceDashboardPage router={router} onClose={() => setShowDashboard(false)} />;
+  }
+
   // Show analytics full page on top
   if (showAnalytics) {
     return <AnalyticsPage router={router} onClose={() => setShowAnalytics(false)} />;
@@ -250,6 +257,17 @@ export default function HistoryModal({ router, onClose }) {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Dashboard button — opens the device dashboard page */}
+            <button
+              onClick={() => setShowDashboard(true)}
+              className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 rounded-xl px-4 py-2 text-xs font-bold transition-all"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10-3a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-7z" />
+              </svg>
+              Dashboard
+            </button>
+
             {/* Analytics button — opens full page */}
             <button
               onClick={() => setShowAnalytics(true)}

@@ -30,7 +30,7 @@ function batteryColor(pct) {
   };
 }
 
-export default function BatteryGauge({ soc, capacity, backupHour, compact = false }) {
+export default function BatteryGauge({ soc, capacity, backupHour, compact = false, hideBackup = false }) {
   const hasSoc =
     soc !== null && soc !== undefined && soc !== "" && !isNaN(Number(soc));
   const pct = hasSoc ? Math.max(0, Math.min(100, Number(soc))) : null;
@@ -103,10 +103,12 @@ export default function BatteryGauge({ soc, capacity, backupHour, compact = fals
               Capacity:{" "}
               <span className="text-violet-400 font-bold">{capacityLabel}</span>
             </div>
-            <div>
-              Backup:{" "}
-              <span className="text-cyan-400 font-bold">{backupLabel}</span>
-            </div>
+            {!hideBackup && (
+              <div>
+                Backup:{" "}
+                <span className="text-cyan-400 font-bold">{backupLabel}</span>
+              </div>
+            )}
           </div>
           <div className="w-1.5 h-1.5 bg-slate-950 border-r border-b border-slate-700 rotate-45 mx-auto -mt-[3px]" />
         </div>
@@ -155,10 +157,12 @@ export default function BatteryGauge({ soc, capacity, backupHour, compact = fals
             Capacity:{" "}
             <span className="text-violet-400 font-bold">{capacityLabel}</span>
           </div>
-          <div>
-            Backup:{" "}
-            <span className="text-cyan-400 font-bold">{backupLabel}</span>
-          </div>
+          {!hideBackup && (
+            <div>
+              Backup:{" "}
+              <span className="text-cyan-400 font-bold">{backupLabel}</span>
+            </div>
+          )}
         </div>
         <div className="w-2 h-2 bg-slate-950 border-r border-b border-slate-700 rotate-45 mx-auto -mt-1" />
       </div>

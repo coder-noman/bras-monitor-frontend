@@ -83,7 +83,8 @@ function ExcelUploadButton({ label, accent, onUpload, onDone }) {
 function labelize(key) {
   return key
     .replace(/_/g, " ")
-    .replace(/\b\w/g, c => c.toUpperCase());
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .replace(/\b(Sa|Bts|Ip)\b/g, m => m.toUpperCase());
 }
 
 // Fields that should never be directly editable (system/meta fields)
@@ -92,8 +93,8 @@ const READONLY_FIELDS = new Set(["id", "uploaded_at", "updated_at", "created_at"
 const TEXTAREA_FIELDS = new Set(["contact_person", "address"]);
 
 // ── Generic detail modal with Edit Mode / Save toggle ───────────────────────
-function DetailModal({ title, data, primaryKey, onClose, onSave, onDelete, deleteLabel }) {
-  const [editMode, setEditMode] = useState(false);
+function DetailModal({ title, data, primaryKey, onClose, onSave, onDelete, deleteLabel, readonlyFields = READONLY_FIELDS, startInEditMode = false }) {
+  const [editMode, setEditMode] = useState(!!startInEditMode);
   const [form, setForm] = useState(data);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -205,7 +206,7 @@ function DetailModal({ title, data, primaryKey, onClose, onSave, onDelete, delet
         <div className="flex-1 overflow-auto p-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {keys.map(key => {
-              const isReadonly = READONLY_FIELDS.has(key) || !editMode;
+              const isReadonly = readonlyFields.has(key) || !editMode;
               const isTextarea = TEXTAREA_FIELDS.has(key);
               const value = form[key];
               const spanFull = isTextarea;
@@ -250,7 +251,7 @@ function DetailModal({ title, data, primaryKey, onClose, onSave, onDelete, delet
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// TAB 1 — Routers (existing implementation)
+// TAB 1 — Routers
 // ══════════════════════════════════════════════════════════════════════════
 function RouterTab({ showToast }) {
   const [routers, setRouters] = useState([]);
@@ -263,7 +264,7 @@ function RouterTab({ showToast }) {
   const [editRouter, setEditRouter] = useState(null);
   const [deleteRouter, setDeleteRouter] = useState(null);
 
-  const [form, setForm] = useState({ bts_name: "", ip_address: "" });
+  const [form, setForm] = useState({ bts_name: "", ip_address: "", bts_code: "" });
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState("");
 
@@ -284,7 +285,8 @@ function RouterTab({ showToast }) {
 
   const filtered = routers.filter(r =>
     r.bts_name?.toLowerCase().includes(search.toLowerCase()) ||
-    r.ip_address?.includes(search)
+    r.ip_address?.includes(search) ||
+    r.bts_code?.toLowerCase().includes(search.toLowerCase())
   );
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -292,15 +294,15 @@ function RouterTab({ showToast }) {
   async function handleAdd(e) {
     e.preventDefault();
     setFormError("");
-    if (!form.bts_name.trim() || !form.ip_address.trim()) {
-      setFormError("Both fields are required");
+    if (!form.bts_name.trim() || !form.ip_address.trim() || !form.bts_code.trim()) {
+      setFormError("All fields are required");
       return;
     }
     setFormLoading(true);
     try {
-      await api.addRouter(form.bts_name.trim(), form.ip_address.trim());
+      await api.addRouter(form.bts_name.trim(), form.ip_address.trim(), form.bts_code.trim());
       setAddModal(false);
-      setForm({ bts_name: "", ip_address: "" });
+      setForm({ bts_name: "", ip_address: "", bts_code: "" });
       showToast("BTS added successfully");
       fetchRouters();
     } catch (e) {
@@ -315,7 +317,7 @@ function RouterTab({ showToast }) {
     setFormError("");
     setFormLoading(true);
     try {
-      await api.updateRouter(editRouter.ip_address, { bts_name: form.bts_name, ip_address: form.ip_address });
+      await api.updateRouter(editRouter.ip_address, { bts_name: form.bts_name, ip_address: form.ip_address, bts_code: form.bts_code });
       setEditRouter(null);
       showToast("BTS updated successfully");
       fetchRouters();
@@ -341,13 +343,13 @@ function RouterTab({ showToast }) {
   }
 
   function openEdit(r) {
-    setForm({ bts_name: r.bts_name, ip_address: r.ip_address });
+    setForm({ bts_name: r.bts_name, ip_address: r.ip_address, bts_code: r.bts_code || "" });
     setFormError("");
     setEditRouter(r);
   }
 
   function openAdd() {
-    setForm({ bts_name: "", ip_address: "" });
+    setForm({ bts_name: "", ip_address: "", bts_code: "" });
     setFormError("");
     setAddModal(true);
   }
@@ -362,7 +364,7 @@ function RouterTab({ showToast }) {
         <div className="relative flex-1 min-w-[200px] max-w-xs">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
           <input type="text" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Search BTS or IP..."
+            placeholder="Search BTS, IP or code..."
             className="w-full bg-slate-800/60 border border-slate-700/50 text-white rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-amber-500/50 placeholder-slate-500" />
         </div>
         <button onClick={openAdd}
@@ -380,16 +382,17 @@ function RouterTab({ showToast }) {
                 <th className="text-left px-5 py-3 font-semibold">#</th>
                 <th className="text-left px-5 py-3 font-semibold">BTS Name</th>
                 <th className="text-left px-5 py-3 font-semibold">IP Address</th>
+                <th className="text-left px-5 py-3 font-semibold">BTS Code</th>
                 <th className="text-center px-5 py-3 font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
               {loading ? (
-                <tr><td colSpan={4} className="text-center py-16">
+                <tr><td colSpan={5} className="text-center py-16">
                   <svg className="w-8 h-8 animate-spin text-amber-400 mx-auto" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                 </td></tr>
               ) : paginated.length === 0 ? (
-                <tr><td colSpan={4} className="text-center py-16 text-slate-500">
+                <tr><td colSpan={5} className="text-center py-16 text-slate-500">
                   {search ? "No BTS found" : "No routers configured"}
                 </td></tr>
               ) : paginated.map((r, i) => (
@@ -400,6 +403,11 @@ function RouterTab({ showToast }) {
                   </td>
                   <td className="px-5 py-3.5">
                     <span className="font-mono text-amber-400/80 text-xs bg-slate-800/60 px-2 py-1 rounded-lg">{r.ip_address}</span>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    {r.bts_code
+                      ? <span className="font-mono text-cyan-400/80 text-xs bg-slate-800/60 px-2 py-1 rounded-lg">{r.bts_code}</span>
+                      : <span className="text-slate-600 text-xs">—</span>}
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center justify-center gap-2">
@@ -453,6 +461,12 @@ function RouterTab({ showToast }) {
                 placeholder="e.g. 192.168.1.100"
                 className="w-full bg-slate-800 border border-slate-600 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500/70 placeholder-slate-500" />
             </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">BTS Code</label>
+              <input type="text" value={form.bts_code} onChange={e => setForm(f => ({ ...f, bts_code: e.target.value }))}
+                placeholder="e.g. Link3-SA00001"
+                className="w-full bg-slate-800 border border-slate-600 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500/70 placeholder-slate-500" />
+            </div>
             {formError && <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{formError}</div>}
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={() => setAddModal(false)}
@@ -481,6 +495,12 @@ function RouterTab({ showToast }) {
               <input type="text" value={form.ip_address} onChange={e => setForm(f => ({ ...f, ip_address: e.target.value }))}
                 className="w-full bg-slate-800 border border-slate-600 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500/70" />
             </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">BTS Code</label>
+              <input type="text" value={form.bts_code} onChange={e => setForm(f => ({ ...f, bts_code: e.target.value }))}
+                placeholder="e.g. Link3-SA00001"
+                className="w-full bg-slate-800 border border-slate-600 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500/70 placeholder-slate-500" />
+            </div>
             {formError && <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{formError}</div>}
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={() => setEditRouter(null)}
@@ -507,6 +527,12 @@ function RouterTab({ showToast }) {
               <p className="text-white font-semibold">{deleteRouter.bts_name}</p>
               <p className="text-slate-400 text-xs mt-2 mb-1">IP Address</p>
               <p className="text-amber-400 font-mono text-sm">{deleteRouter.ip_address}</p>
+              {deleteRouter.bts_code && (
+                <>
+                  <p className="text-slate-400 text-xs mt-2 mb-1">BTS Code</p>
+                  <p className="text-cyan-400 font-mono text-sm">{deleteRouter.bts_code}</p>
+                </>
+              )}
             </div>
             <div className="flex gap-3">
               <button onClick={() => setDeleteRouter(null)}
@@ -526,202 +552,46 @@ function RouterTab({ showToast }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// TAB 2 — BTS Information (battery-info)
+// TAB 2 — SA Data (site profiles: /api/sa)
 // ══════════════════════════════════════════════════════════════════════════
-function BTSInfoTab({ showToast }) {
-  const [months, setMonths] = useState([]);
-  const [selectedMonth, setSelectedMonth] = useState(""); // "" = latest
-  const [list, setList] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState(null); // full detail object
-  const [detailLoading, setDetailLoading] = useState(false);
+const SA_READONLY = new Set(["id", "created_at", "updated_at", "uploaded_at"]);
 
-  const fetchMonths = useCallback(async () => {
-    try {
-      const res = await api.getBatteryInfoMonths();
-      const arr = Array.isArray(res) ? res : res.months || res.data || [];
-      setMonths(arr);
-    } catch {
-      setMonths([]);
-    }
-  }, []);
-
-  const fetchList = useCallback(async (month) => {
-    setLoading(true);
-    try {
-      const res = await api.getBatteryInfoAll(month || undefined);
-      const arr = res.data || (Array.isArray(res) ? res : []);
-      setList(arr);
-    } catch (e) {
-      showToast("Failed to load BTS information: " + e.message, "error");
-      setList([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [showToast]);
-
-  useEffect(() => { fetchMonths(); }, [fetchMonths]);
-  useEffect(() => { fetchList(selectedMonth); }, [selectedMonth, fetchList]);
-
-  const filtered = list.filter(r =>
-    r.bts_name?.toLowerCase().includes(search.toLowerCase()) ||
-    r.camera_ip?.includes(search)
-  );
-
-  async function openDetail(row) {
-    setDetailLoading(true);
-    try {
-      const res = await api.getBatteryInfoByName(row.bts_name, selectedMonth || undefined);
-      const data = res.data || res;
-      setSelected(Array.isArray(data) ? data[0] : data);
-    } catch (e) {
-      showToast("Failed to load detail: " + e.message, "error");
-    } finally {
-      setDetailLoading(false);
-    }
+// Keep the original data type when a value is edited as text
+function coerceLike(orig, val) {
+  if (typeof val !== "string") return val;
+  if (val === "") return orig === null || orig === undefined ? null : "";
+  if (typeof orig === "number" && !isNaN(Number(val))) return Number(val);
+  if (typeof orig === "boolean") {
+    if (val.toLowerCase() === "true") return true;
+    if (val.toLowerCase() === "false") return false;
   }
-
-  async function handleSave(form) {
-    await api.updateBatteryInfo(selected.bts_name, form, selectedMonth || undefined);
-    showToast("BTS information updated successfully");
-    setSelected(form);
-    fetchList(selectedMonth);
-  }
-
-  async function handleDelete() {
-    await api.deleteBatteryInfo(selected.bts_name, selectedMonth || undefined);
-    showToast("BTS information deleted successfully");
-    fetchList(selectedMonth);
-  }
-
-  return (
-    <>
-      <div className="flex items-center gap-4 mb-5 flex-wrap">
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-2">
-          <span className="text-emerald-400 font-bold">{list.length}</span>
-          <span className="text-slate-400 text-sm ml-1">BTS records</span>
-        </div>
-
-        <div className="relative flex-1 min-w-[200px] max-w-xs">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search BTS or camera IP..."
-            className="w-full bg-slate-800/60 border border-slate-700/50 text-white rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-emerald-500/50 placeholder-slate-500" />
-        </div>
-
-        {/* Month dropdown */}
-        <div className="relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-          <select
-            value={selectedMonth}
-            onChange={e => setSelectedMonth(e.target.value)}
-            className="appearance-none bg-slate-800/60 border border-slate-700/50 text-white rounded-xl pl-10 pr-8 py-2 text-sm focus:outline-none focus:border-emerald-500/50 cursor-pointer"
-          >
-            <option value="">Latest</option>
-            {months.map(m => {
-              const val = typeof m === "string" ? m : m.month || m.value;
-              return <option key={val} value={val}>{val}</option>;
-            })}
-          </select>
-          <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-        </div>
-
-        <ExcelUploadButton
-          label="Upload Excel"
-          accent="emerald"
-          onUpload={api.uploadBatteryInfo}
-          onDone={(res, err) => {
-            if (err) {
-              showToast("Upload failed: " + err.message, "error");
-            } else {
-              showToast("BTS information uploaded successfully");
-              fetchMonths();
-              fetchList(selectedMonth);
-            }
-          }}
-        />
-      </div>
-
-      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden">
-        <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 320px)" }}>
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-slate-800 text-slate-400 text-xs uppercase tracking-wider">
-                <th className="text-left px-5 py-3 font-semibold">#</th>
-                <th className="text-left px-5 py-3 font-semibold">BTS Name</th>
-                <th className="text-left px-5 py-3 font-semibold">Camera IP</th>
-                <th className="text-left px-5 py-3 font-semibold">Zone</th>
-                <th className="text-left px-5 py-3 font-semibold">Report Month</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {loading ? (
-                <tr><td colSpan={5} className="text-center py-16">
-                  <svg className="w-8 h-8 animate-spin text-emerald-400 mx-auto" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                </td></tr>
-              ) : filtered.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-16 text-slate-500">
-                  {search ? "No BTS found" : "No data for this month"}
-                </td></tr>
-              ) : filtered.map((r, i) => (
-                <tr key={r.id || r.bts_name || i}
-                  onClick={() => openDetail(r)}
-                  className="hover:bg-slate-800/40 transition-colors cursor-pointer group">
-                  <td className="px-5 py-3.5 text-slate-500 font-mono text-xs">{i + 1}</td>
-                  <td className="px-5 py-3.5">
-                    <span className="text-white font-medium group-hover:text-emerald-400 transition-colors">{r.bts_name}</span>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span className="font-mono text-cyan-400/80 text-xs bg-slate-800/60 px-2 py-1 rounded-lg">{r.camera_ip || "—"}</span>
-                  </td>
-                  <td className="px-5 py-3.5 text-slate-300 text-xs">{r.zone || "—"}</td>
-                  <td className="px-5 py-3.5 text-slate-400 text-xs font-mono">{r.report_month || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {detailLoading && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
-          <svg className="w-10 h-10 animate-spin text-emerald-400" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-        </div>
-      )}
-
-      {selected && (
-        <DetailModal
-          title={selected.bts_name}
-          primaryKey={selected.camera_ip}
-          data={selected}
-          onClose={() => setSelected(null)}
-          onSave={handleSave}
-          onDelete={handleDelete}
-          deleteLabel={selected.bts_name}
-        />
-      )}
-    </>
-  );
+  return val;
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// TAB 3 — Battery Data (battery-latest)
-// ══════════════════════════════════════════════════════════════════════════
-function BatteryDataTab({ showToast }) {
+function SATab({ showToast }) {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 15;
+
+  const [selected, setSelected] = useState(null); // { row, edit }
+  const [addModal, setAddModal] = useState(false);
+  const [deleteSa, setDeleteSa] = useState(null);
+
+  const [form, setForm] = useState({});
+  const [extra, setExtra] = useState([]); // custom fields: [{ key, value }]
+  const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState("");
 
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.getBatteryLatestAll();
-      const arr = res.data || (Array.isArray(res) ? res : []);
+      const data = await api.getSAList();
+      const arr = Array.isArray(data) ? data : data.data || data.sa || data.sites || [];
       setList(arr);
     } catch (e) {
-      showToast("Failed to load battery data: " + e.message, "error");
+      showToast("Failed to load SA data: " + e.message, "error");
       setList([]);
     } finally {
       setLoading(false);
@@ -730,126 +600,299 @@ function BatteryDataTab({ showToast }) {
 
   useEffect(() => { fetchList(); }, [fetchList]);
 
-  const filtered = list.filter(r =>
-    r.bts_name?.toLowerCase().includes(search.toLowerCase()) ||
-    r.ip_address?.includes(search)
-  );
+  // All editable field names seen in the data (sa_code and sa_name first)
+  const fieldKeys = (() => {
+    const set = new Set(["sa_code", "sa_name"]);
+    list.slice(0, 20).forEach(r => Object.keys(r).forEach(k => { if (!SA_READONLY.has(k)) set.add(k); }));
+    return [...set];
+  })();
+  const columnKeys = fieldKeys.slice(0, 7);
 
-  function openDetail(row) {
-    setSelected(row);
+  const filtered = list.filter(r =>
+    !search ||
+    Object.values(r).some(v => v !== null && v !== undefined && String(v).toLowerCase().includes(search.toLowerCase()))
+  );
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  function openAdd() {
+    const blank = {};
+    fieldKeys.forEach(k => { blank[k] = ""; });
+    setForm(blank);
+    setExtra([]);
+    setFormError("");
+    setAddModal(true);
   }
 
-  async function handleSave(form) {
-    await api.updateBatteryLatest(selected.ip_address, form);
-    showToast("Battery data updated successfully");
-    setSelected(form);
+  async function handleAdd(e) {
+    e.preventDefault();
+    setFormError("");
+    if (!String(form.sa_code || "").trim()) {
+      setFormError("SA code is required");
+      return;
+    }
+    const template = list[0] || {};
+    const payload = {};
+    Object.keys(form).forEach(k => {
+      const v = typeof form[k] === "string" ? form[k].trim() : form[k];
+      if (v === "" || v === null || v === undefined) return;
+      payload[k] = coerceLike(template[k], v);
+    });
+    extra.forEach(f => {
+      const k = f.key.trim();
+      if (k && String(f.value).trim() !== "") payload[k] = String(f.value).trim();
+    });
+    setFormLoading(true);
+    try {
+      await api.addSA(payload);
+      setAddModal(false);
+      showToast("SA added successfully");
+      fetchList();
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setFormLoading(false);
+    }
+  }
+
+  // Save from the detail modal — every editable field is sent
+  async function handleSave(edited) {
+    const row = selected.row;
+    const payload = {};
+    Object.keys(row).forEach(k => {
+      if (SA_READONLY.has(k)) return;
+      payload[k] = coerceLike(row[k], edited[k]);
+    });
+    await api.updateSA(row.sa_code, payload);
+    showToast("SA updated successfully");
+    setSelected({ row: { ...row, ...payload }, edit: false });
+    fetchList();
+  }
+
+  async function handleDeleteFromModal() {
+    await api.deleteSA(selected.row.sa_code);
+    showToast("SA deleted successfully");
     fetchList();
   }
 
   async function handleDelete() {
-    await api.deleteBatteryLatest(selected.ip_address);
-    showToast("Battery data deleted successfully");
-    fetchList();
+    setFormLoading(true);
+    try {
+      await api.deleteSA(deleteSa.sa_code);
+      setDeleteSa(null);
+      showToast("SA deleted successfully");
+      fetchList();
+    } catch (e) {
+      showToast("Delete failed: " + e.message, "error");
+    } finally {
+      setFormLoading(false);
+    }
   }
+
+  const inputCls = "w-full bg-slate-800 border border-slate-600 text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500/70 placeholder-slate-500";
 
   return (
     <>
       <div className="flex items-center gap-4 mb-5 flex-wrap">
         <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-xl px-4 py-2">
           <span className="text-cyan-400 font-bold">{list.length}</span>
-          <span className="text-slate-400 text-sm ml-1">battery records</span>
+          <span className="text-slate-400 text-sm ml-1">total SA</span>
         </div>
         <div className="relative flex-1 min-w-[200px] max-w-xs">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search BTS or IP..."
+          <input type="text" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+            placeholder="Search SA..."
             className="w-full bg-slate-800/60 border border-slate-700/50 text-white rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-cyan-500/50 placeholder-slate-500" />
         </div>
-
-        <ExcelUploadButton
-          label="Upload Excel"
-          accent="cyan"
-          onUpload={api.uploadBatteryLatest}
-          onDone={(res, err) => {
-            if (err) {
-              showToast("Upload failed: " + err.message, "error");
-            } else {
-              showToast("Battery data uploaded successfully");
-              fetchList();
-            }
-          }}
-        />
+        <button onClick={openAdd}
+          className="flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl px-3 py-2 text-xs font-bold transition-all ml-auto">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+          Add SA
+        </button>
       </div>
 
       <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden">
-        <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 300px)" }}>
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-slate-800 text-slate-400 text-xs uppercase tracking-wider">
+            <thead>
+              <tr className="bg-slate-800/40 text-slate-400 text-xs uppercase tracking-wider">
                 <th className="text-left px-5 py-3 font-semibold">#</th>
-                <th className="text-left px-5 py-3 font-semibold">BTS Name</th>
-                <th className="text-left px-5 py-3 font-semibold">IP Address</th>
-                <th className="text-left px-5 py-3 font-semibold">Battery Capacity</th>
-                <th className="text-left px-5 py-3 font-semibold">Charging (A)</th>
-                <th className="text-left px-5 py-3 font-semibold">Discharging (A)</th>
-                <th className="text-left px-5 py-3 font-semibold">Load (W)</th>
-                <th className="text-left px-5 py-3 font-semibold">Updated</th>
+                {columnKeys.map(k => (
+                  <th key={k} className="text-left px-5 py-3 font-semibold whitespace-nowrap">{labelize(k)}</th>
+                ))}
+                <th className="text-center px-5 py-3 font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
               {loading ? (
-                <tr><td colSpan={8} className="text-center py-16">
+                <tr><td colSpan={columnKeys.length + 2} className="text-center py-16">
                   <svg className="w-8 h-8 animate-spin text-cyan-400 mx-auto" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                 </td></tr>
-              ) : filtered.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-16 text-slate-500">
-                  {search ? "No records found" : "No battery data available"}
+              ) : paginated.length === 0 ? (
+                <tr><td colSpan={columnKeys.length + 2} className="text-center py-16 text-slate-500">
+                  {search ? "No SA found" : "No SA data available"}
                 </td></tr>
-              ) : filtered.map((r, i) => (
-                <tr key={r.ip_address || i}
-                  onClick={() => openDetail(r)}
+              ) : paginated.map((r, i) => (
+                <tr key={r.sa_code || i}
+                  onClick={() => setSelected({ row: r, edit: false })}
                   className="hover:bg-slate-800/40 transition-colors cursor-pointer group">
-                  <td className="px-5 py-3.5 text-slate-500 font-mono text-xs">{i + 1}</td>
+                  <td className="px-5 py-3.5 text-slate-500 font-mono text-xs">{(page - 1) * PAGE_SIZE + i + 1}</td>
+                  {columnKeys.map(k => (
+                    <td key={k} className="px-5 py-3.5 whitespace-nowrap">
+                      {k === "sa_code" ? (
+                        <span className="font-mono text-cyan-400/80 text-xs bg-slate-800/60 px-2 py-1 rounded-lg">{r[k]}</span>
+                      ) : k === "sa_name" ? (
+                        <span className="text-white font-medium group-hover:text-cyan-400 transition-colors">{r[k]}</span>
+                      ) : (
+                        <span className="text-slate-300 text-xs font-mono">
+                          {r[k] === null || r[k] === undefined || r[k] === "" ? "—" : String(r[k])}
+                        </span>
+                      )}
+                    </td>
+                  ))}
                   <td className="px-5 py-3.5">
-                    <span className="text-white font-medium group-hover:text-cyan-400 transition-colors">{r.bts_name}</span>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span className="font-mono text-cyan-400/80 text-xs bg-slate-800/60 px-2 py-1 rounded-lg">{r.ip_address}</span>
-                  </td>
-                  <td className="px-5 py-3.5 text-emerald-400 font-mono text-xs">{r.total_battery_capacity ?? "—"}</td>
-                  <td className="px-5 py-3.5 text-teal-400 font-mono text-xs">{r.total_charging_ampere ?? "—"}</td>
-                  <td className="px-5 py-3.5 text-orange-400 font-mono text-xs">{r.total_discharging_ampere ?? "—"}</td>
-                  <td className="px-5 py-3.5 text-violet-400 font-mono text-xs">{r.load_watt ?? "—"}</td>
-                  <td className="px-5 py-3.5 text-slate-400 text-xs font-mono">
-                    {r.updated_at ? new Date(r.updated_at).toLocaleString("en-BD", { timeZone: "Asia/Dhaka", dateStyle: "medium", timeStyle: "short" }) : "—"}
+                    <div className="flex items-center justify-center gap-2">
+                      <button onClick={e => { e.stopPropagation(); setSelected({ row: r, edit: true }); }}
+                        className="flex items-center gap-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/25 text-blue-400 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                        Update
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); setDeleteSa(r); }}
+                        className="flex items-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 text-red-400 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-4 border-t border-slate-800">
+            <span className="text-slate-400 text-sm">Page {page} of {totalPages}</span>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                className="px-3 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                ← Prev
+              </button>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                className="px-3 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* View / update every field */}
       {selected && (
         <DetailModal
-          title={selected.bts_name}
-          primaryKey={selected.ip_address}
-          data={selected}
+          title={selected.row.sa_name || selected.row.sa_code}
+          primaryKey={selected.row.sa_code}
+          data={selected.row}
+          readonlyFields={SA_READONLY}
+          startInEditMode={selected.edit}
           onClose={() => setSelected(null)}
           onSave={handleSave}
-          onDelete={handleDelete}
-          deleteLabel={selected.bts_name}
+          onDelete={handleDeleteFromModal}
+          deleteLabel={selected.row.sa_name || selected.row.sa_code}
         />
+      )}
+
+      {/* Add SA */}
+      {addModal && (
+        <Modal title="Add New SA" wide onClose={() => setAddModal(false)}>
+          <form onSubmit={handleAdd} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {Object.keys(form).map(k => (
+                <div key={k}>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                    {labelize(k)}{k === "sa_code" ? " *" : ""}
+                  </label>
+                  <input type="text" value={form[k]}
+                    onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
+                    placeholder={k === "sa_code" ? "e.g. bras1" : ""}
+                    className={inputCls} />
+                </div>
+              ))}
+            </div>
+
+            {extra.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Custom Fields</div>
+                {extra.map((f, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                    <input type="text" value={f.key} placeholder="field_name"
+                      onChange={e => setExtra(x => x.map((it, j) => j === i ? { ...it, key: e.target.value } : it))}
+                      className={inputCls} />
+                    <input type="text" value={f.value} placeholder="value"
+                      onChange={e => setExtra(x => x.map((it, j) => j === i ? { ...it, value: e.target.value } : it))}
+                      className={inputCls} />
+                    <button type="button" onClick={() => setExtra(x => x.filter((_, j) => j !== i))}
+                      className="w-10 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-bold">×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button type="button" onClick={() => setExtra(x => [...x, { key: "", value: "" }])}
+              className="text-xs font-bold text-cyan-400 hover:text-cyan-300">
+              + Add custom field
+            </button>
+
+            {formError && <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{formError}</div>}
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={() => setAddModal(false)}
+                className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl py-2.5 text-sm font-semibold transition-all">
+                Cancel
+              </button>
+              <button type="submit" disabled={formLoading}
+                className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl py-2.5 text-sm font-bold disabled:opacity-50 transition-all">
+                {formLoading ? "Adding..." : "Add SA"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Delete SA */}
+      {deleteSa && (
+        <Modal title="Confirm Delete" onClose={() => setDeleteSa(null)}>
+          <div className="space-y-5">
+            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
+              <p className="text-red-300 text-sm">This will permanently delete this SA. This action cannot be undone.</p>
+            </div>
+            <div className="bg-slate-800/60 rounded-xl p-4">
+              <p className="text-slate-400 text-xs mb-1">SA Name</p>
+              <p className="text-white font-semibold">{deleteSa.sa_name || "—"}</p>
+              <p className="text-slate-400 text-xs mt-2 mb-1">SA Code</p>
+              <p className="text-cyan-400 font-mono text-sm">{deleteSa.sa_code}</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteSa(null)}
+                className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl py-2.5 text-sm font-semibold transition-all">
+                Cancel
+              </button>
+              <button onClick={handleDelete} disabled={formLoading}
+                className="flex-1 bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-xl py-2.5 text-sm font-bold disabled:opacity-50 transition-all">
+                {formLoading ? "Deleting..." : "Delete Permanently"}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </>
   );
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// MAIN ADMIN PAGE — 3 department tabs
+// MAIN ADMIN PAGE — department tabs
 // ══════════════════════════════════════════════════════════════════════════
 export default function AdminPage({ onBack }) {
-  const [tab, setTab] = useState("routers"); // "routers" | "btsinfo" | "battery"
+  const [tab, setTab] = useState("routers"); // "routers" | "sa"
   const [toast, setToast] = useState(null);
 
   const showToast = useCallback((msg, type = "success") => {
@@ -859,8 +902,7 @@ export default function AdminPage({ onBack }) {
 
   const tabs = [
     { key: "routers", label: "Router Data", color: "amber", icon: "M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2h-2" },
-    { key: "btsinfo", label: "BTS Information", color: "emerald", icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" },
-    { key: "battery", label: "Battery Data", color: "cyan", icon: "M13 10V3L4 14h7v7l9-11h-7z" },
+    { key: "sa", label: "SA Data", color: "cyan", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" },
   ];
 
   return (
@@ -916,8 +958,7 @@ export default function AdminPage({ onBack }) {
 
       <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-6">
         {tab === "routers" && <RouterTab showToast={showToast} />}
-        {tab === "btsinfo" && <BTSInfoTab showToast={showToast} />}
-        {tab === "battery" && <BatteryDataTab showToast={showToast} />}
+        {tab === "sa" && <SATab showToast={showToast} />}
       </div>
     </div>
   );

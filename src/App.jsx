@@ -7,6 +7,7 @@ import AdminPage from "./pages/AdminPage";
 import AskPage from "./pages/AskPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import ReportsPage from "./pages/ReportsPage";
+import SystemDownPage from "./pages/SystemDownPage";
 
 const fontLink = document.createElement("link");
 fontLink.href = "https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap";
@@ -43,6 +44,10 @@ function AppInner() {
     return <AnalyticsPage onBack={() => setView("dashboard")} />;
   }
 
+  if (view === "systemDown") {
+    return <SystemDownPage onBack={() => setView("dashboard")} />;
+  }
+
   if (view === "reports") {
     return <ReportsPage onBack={() => setView("dashboard")} />;
   }
@@ -66,6 +71,7 @@ function AppInner() {
       onAskClick={() => setView("ask")}
       onAnalyticsClick={() => setView("analytics")}
       onReportsClick={() => setView("reports")}
+      onSystemDownClick={() => setView("systemDown")}
       onLogout={() => setView("dashboard")}
     />
   );

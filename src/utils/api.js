@@ -2,6 +2,23 @@ import { API_BASE_URL } from "../config/config";
 
 const base = API_BASE_URL;
 
+// JSON request helper for the SA endpoints — surfaces the server's own error message
+async function saRequest(url, method, body, failMsg) {
+  const res = await fetch(url, {
+    method,
+    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  let json = null;
+  try {
+    json = await res.json();
+  } catch {
+    /* empty or non-JSON body */
+  }
+  if (!res.ok) throw new Error((json && (json.error || json.message)) || failMsg);
+  return json;
+}
+
 export const api = {
   async getRouters() {
     const res = await fetch(`${base}/api/routers`);
@@ -57,6 +74,64 @@ export const api = {
     return res.blob();
   },
 
+  // ── BRAS Power Status (backup time) ─────────────────────────────────────
+  async getBrasPowerStatus() {
+    const res = await fetch(`${base}/api/bras/power/status`);
+    if (!res.ok) throw new Error("Failed to fetch BRAS power status");
+    return res.json();
+  },
+
+  // ── SA / Devices (PDB live summary, system down, system power events) ───
+  async getDeviceLiveSummary(component) {
+    const res = await fetch(`${base}/api/devices/live-summary?component=${encodeURIComponent(component)}`);
+    if (!res.ok) throw new Error("Failed to fetch live summary");
+    return res.json();
+  },
+
+  async getSystemDown() {
+    const res = await fetch(`${base}/api/devices/system-down`);
+    if (!res.ok) throw new Error("Failed to fetch system down");
+    return res.json();
+  },
+
+  async getLatestData(sa_code) {
+    const res = await fetch(`${base}/api/devices/latest-data/${encodeURIComponent(sa_code)}`);
+    if (!res.ok) throw new Error("Failed to fetch latest data");
+    return res.json();
+  },
+
+  async getSystemPowerEvents(sa_code, page = 1, limit = 300) {
+    const res = await fetch(`${base}/api/devices/${encodeURIComponent(sa_code)}/system-power-events?page=${page}&limit=${limit}`);
+    if (!res.ok) throw new Error("Failed to fetch system power events");
+    return res.json();
+  },
+
+  async getPdbEvents(sa_code, page = 1, limit = 300) {
+    const res = await fetch(`${base}/api/devices/${encodeURIComponent(sa_code)}/pdb-events?page=${page}&limit=${limit}`);
+    if (!res.ok) throw new Error("Failed to fetch PDB events");
+    return res.json();
+  },
+
+  // ── SA Down table (replaces the old /api/devices/system-down table) ────────
+  async getSaStatusList() {
+    const res = await fetch(`${base}/api/sa-status`);
+    if (!res.ok) throw new Error("Failed to fetch SA status list");
+    return res.json();
+  },
+
+  // History button — look up a single SA by its code
+  async getSaStatusByCode(sa_code) {
+    const res = await fetch(`${base}/api/sa-status/${encodeURIComponent(sa_code)}`);
+    if (!res.ok) throw new Error("Failed to fetch SA status");
+    return res.json();
+  },
+
+  async getSaStatusEvents(sa_code, page = 1, limit = 300) {
+    const res = await fetch(`${base}/api/sa-status/${encodeURIComponent(sa_code)}/events?page=${page}&limit=${limit}`);
+    if (!res.ok) throw new Error("Failed to fetch SA status events");
+    return res.json();
+  },
+
   async ask(question) {
     const res = await fetch(`${base}/api/ask`, {
       method: "POST",
@@ -67,11 +142,11 @@ export const api = {
     return res.json();
   },
 
-  async addRouter(bts_name, ip_address) {
+  async addRouter(bts_name, ip_address, bts_code) {
     const res = await fetch(`${base}/api/routers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bts_name, ip_address }),
+      body: JSON.stringify({ bts_name, ip_address, bts_code }),
     });
     if (!res.ok) throw new Error("Failed to add router");
     return res.json();
@@ -93,6 +168,33 @@ export const api = {
     });
     if (!res.ok) throw new Error("Failed to delete router");
     return res.json();
+  },
+
+  // ── SA (Site Profile) CRUD ──────────────────────────────────────────────
+  async getSAList() {
+    return saRequest(`${base}/api/sa`, "GET", undefined, "Failed to fetch SA list");
+  },
+
+  async getSA(sa_code) {
+    return saRequest(`${base}/api/sa/${encodeURIComponent(sa_code)}`, "GET", undefined, "Failed to fetch SA");
+  },
+
+  async addSA(data) {
+    return saRequest(`${base}/api/sa`, "POST", data, "Failed to add SA");
+  },
+
+  // Full update (PUT)
+  async updateSA(sa_code, data) {
+    return saRequest(`${base}/api/sa/${encodeURIComponent(sa_code)}`, "PUT", data, "Failed to update SA");
+  },
+
+  // Partial update (PATCH)
+  async patchSA(sa_code, data) {
+    return saRequest(`${base}/api/sa/${encodeURIComponent(sa_code)}`, "PATCH", data, "Failed to update SA");
+  },
+
+  async deleteSA(sa_code) {
+    return saRequest(`${base}/api/sa/${encodeURIComponent(sa_code)}`, "DELETE", undefined, "Failed to delete SA");
   },
 
   // ── BTS Information (battery-info) ──────────────────────────────────────

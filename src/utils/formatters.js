@@ -60,6 +60,27 @@ export function formatDateOnlyBD(utcString) {
   } catch { return "—"; }
 }
 
+// Short date like "23/9/26" (D/M/YY, no leading zeros), Asia/Dhaka
+export function formatDateShortBD(utcString) {
+  if (!utcString) return "—";
+  try {
+    const date = new Date(utcString);
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Dhaka",
+      day: "numeric",
+      month: "numeric",
+      year: "2-digit",
+    }).formatToParts(date);
+    const day = parts.find((p) => p.type === "day")?.value;
+    const month = parts.find((p) => p.type === "month")?.value;
+    const year = parts.find((p) => p.type === "year")?.value;
+    if (!day || !month || !year) return "—";
+    return `${day}/${month}/${year}`;
+  } catch {
+    return "—";
+  }
+}
+
 export function formatDateTimeBD(utcString) {
   if (!utcString) return "—";
   try {
@@ -72,6 +93,17 @@ export function formatDateTimeBD(utcString) {
   } catch {
     return "—";
   }
+}
+
+export function formatBackupHours(value) {
+  if (value === null || value === undefined || value === "" || isNaN(Number(value))) return "—";
+  const num = Number(value);
+  const hours = Math.floor(num);
+  const minutes = Math.round((num - hours) * 60);
+  if (hours === 0 && minutes === 0) return "0min";
+  if (hours === 0) return `${minutes}min`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}min`;
 }
 
 export function getStatusColor(status) {
